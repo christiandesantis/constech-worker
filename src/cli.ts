@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
+import { config } from 'dotenv';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { initCommand } from './commands/init.js';
 import { dispatchCommand } from './commands/dispatch.js';
 import { doctorCommand } from './commands/doctor.js';
 import { configureCommand } from './commands/configure.js';
+
+// Load environment variables from .env files
+config({ path: '.env' });
 
 const program = new Command();
 
