@@ -1,0 +1,38 @@
+{
+  "project": {
+    "owner": "auto-detect",
+    "name": "auto-detect",
+    "defaultBranch": "main",
+    "workingBranch": "staging"
+  },
+  "github": {
+    "projectId": null,
+    "statusFieldId": null,
+    "statusOptions": {
+      "backlog": null,
+      "ready": null,
+      "inProgress": null,
+      "inReview": null,
+      "done": null
+    }
+  },
+  "bot": {
+    "tokenEnvVar": "GITHUB_BOT_TOKEN",
+    "username": "auto-detect"
+  },
+  "docker": {
+    "devContainerPath": ".devcontainer",
+    "customImage": null,
+    "nodeVersion": "20"
+  },
+  "workflow": {
+    "qualityChecks": [
+      "pnpm typecheck",
+      "pnpm check",
+      "pnpm build"
+    ],
+    "packageManager": "pnpm",
+    "reviewerEnvVar": "REVIEWER_USER",
+    "defaultReviewer": null
+  }
+}

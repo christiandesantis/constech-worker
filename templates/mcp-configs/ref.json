@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ref": {
+      "command": "node", 
+      "args": [
+        "/usr/local/lib/node_modules/@modelcontextprotocol/server-ref/dist/index.js"
+      ]
+    }
+  }
+}

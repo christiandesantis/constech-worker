@@ -1,0 +1,31 @@
+{
+	"name": "Plaiwoo Worker - Claude Code",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": {
+			"TZ": "${localEnv:TZ:America/Los_Angeles}",
+			"CLAUDE_CODE_VERSION": "latest",
+			"GIT_DELTA_VERSION": "0.18.2"
+		}
+	},
+	"runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+	"remoteUser": "worker",
+	"mounts": [
+		"source=plaiwoo-worker-history,target=/commandhistory,type=volume",
+		"source=plaiwoo-worker-claude,target=/home/worker/.claude,type=volume"
+	],
+	"containerEnv": {
+		"NODE_OPTIONS": "--max-old-space-size=4096",
+		"CLAUDE_CONFIG_DIR": "/home/worker/.claude",
+		"POWERLEVEL9K_DISABLE_GITSTATUS": "true",
+		"DEVCONTAINER": "true",
+		"PNPM_HOME": "/usr/local/share/pnpm",
+		"PNPM_STORE_PATH": "/tmp/pnpm-store",
+		"PNPM_CACHE_PATH": "/tmp/pnpm-cache",
+		"PNPM_STATE_DIR": "/tmp/pnpm-state"
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+	"workspaceFolder": "/workspace",
+	"shutdownAction": "none",
+	"overrideCommand": true
+}
