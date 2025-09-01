@@ -2,6 +2,31 @@
 
 This document provides real-world examples of using Constech Worker for different development scenarios.
 
+## Authentication Setup
+
+Before using Constech Worker, ensure Claude Code authentication is set up in the persistent Docker volume:
+
+```bash
+# Check if authentication volume exists
+docker volume ls | grep constech-worker-claude
+
+# If volume doesn't exist, create it and set up authentication
+docker volume create constech-worker-claude
+
+# Set up authentication interactively (one-time setup)
+docker run -it --rm \
+  --mount source=constech-worker-claude,target=/home/worker/.claude,type=volume \
+  -e CLAUDE_CONFIG_DIR=/home/worker/.claude \
+  --user worker \
+  node:20 bash -c "
+    npm install -g @anthropic-ai/claude-code &&
+    claude --version &&
+    echo 'Run: claude' &&
+    echo 'Follow prompts to authenticate' &&
+    bash
+  "
+```
+
 ## Basic Usage Patterns
 
 ### 1. Working on Existing Issues
@@ -167,6 +192,34 @@ constech-worker dispatch --prompt "Implement OAuth2 authentication with Google a
 constech-worker dispatch --prompt "Add OpenAPI/Swagger documentation for all REST endpoints. Include request/response examples and authentication requirements."
 ```
 
+## Container Architecture Verification
+
+### 10. Verify Container Setup
+
+```bash
+# Check system health including Docker volume authentication
+constech-worker doctor
+
+# Manually verify Docker volume contains authentication
+docker run --rm --mount source=constech-worker-claude,target=/home/worker/.claude,type=volume alpine ls -la /home/worker/.claude/
+# Should show .claude.json and other authentication files
+
+# Test container build (using your devcontainer configuration)
+constech-worker dispatch --prompt "test container setup" --create-issue
+```
+
+**Expected Container Workflow:**
+```bash
+[CONTAINER] === CONSTECH WORKER DEBUG INFO ===
+[CONTAINER] Step 1: Container started at: [timestamp]
+[CONTAINER] Step 2: Working directory: /workspace
+[CONTAINER] Checking Claude Code authentication...
+[CONTAINER] Claude authentication found in persistent volume
+[CONTAINER] Creating clean isolated workspace from GitHub...
+[CONTAINER] Workspace prepared on clean staging branch: [commit hash]
+[CONTAINER] Starting Claude Code execution...
+```
+
 ## Troubleshooting Examples
 
 ### 11. Common Issues and Solutions
@@ -244,20 +297,6 @@ constech-worker dispatch --prompt "Optimize database queries in user dashboard. 
 
 # ✅ Good: Clear acceptance criteria
 constech-worker dispatch --prompt "Implement file upload functionality. Support images up to 10MB, validate file types (jpg, png, gif), show upload progress, and display preview."
-```
-
-### 16. Project Organization
-
-```bash
-# Feature branches for related work
-constech-worker dispatch --prompt "User authentication - Step 1: Login form and validation" --create-issue
-constech-worker dispatch --prompt "User authentication - Step 2: JWT token handling and storage" --create-issue
-constech-worker dispatch --prompt "User authentication - Step 3: Protected routes and middleware" --create-issue
-
-# Bug fix categorization
-constech-worker dispatch --prompt "UI Bug: Button alignment issues on mobile devices" --create-issue
-constech-worker dispatch --prompt "Performance: Slow loading on products page" --create-issue
-constech-worker dispatch --prompt "Security: Sanitize user input in comment system" --create-issue
 ```
 
 ---

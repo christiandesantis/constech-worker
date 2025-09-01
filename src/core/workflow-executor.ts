@@ -194,8 +194,8 @@ ${description}
       // Mount repository as read-only like working implementation
       const containerBinds = [
         `${process.cwd()}:/workspace/repo:ro`, // Read-only mount like dispatch-worker.sh
-        // Use persistent Docker volume for Claude authentication like working implementation
-        'plaiwoo-worker-claude:/home/worker/.claude:rw',
+        // Use persistent Docker volume for Claude authentication
+        'constech-worker-claude:/home/worker/.claude:rw',
       ];
       
       // Add MCP config if available  
@@ -576,8 +576,8 @@ cd "\$WORK_DIR"
 
 # Initialize empty git repo (matches workflow-engine.sh exactly)
 git init
-git config user.name "plaiwoo-bot"
-git config user.email "plaiwoo-bot@users.noreply.github.com"
+git config user.name "constech-worker"
+git config user.email "constech-worker@users.noreply.github.com"
 
 # Configure git authentication for fetching from origin (matches workflow-engine.sh)
 echo "Configuring git authentication..." >&2
@@ -586,7 +586,7 @@ git config credential.helper store
 mkdir -p /tmp/git-credentials
 export GIT_CONFIG_GLOBAL=/tmp/gitconfig
 git config --global credential.helper "store --file=/tmp/git-credentials/.git-credentials"
-echo "https://plaiwoo-bot:\${BOT_APP_TOKEN}@github.com" > /tmp/git-credentials/.git-credentials
+echo "https://\${BOT_USER}:\${BOT_APP_TOKEN}@github.com" > /tmp/git-credentials/.git-credentials
 
 # Add GitHub remote (matches workflow-engine.sh)
 git remote add origin "https://github.com/${this.config.project.owner}/${this.config.project.name}.git"

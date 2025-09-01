@@ -108,9 +108,9 @@ RUN chmod +x /usr/local/bin/init-firewall.sh && \
   echo "$USERNAME ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/$USERNAME-firewall && \
   chmod 0440 /etc/sudoers.d/$USERNAME-firewall
 
-# Configure git with plaiwoo-bot for consistency  
-RUN git config --system user.name "plaiwoo-bot" && \
-  git config --system user.email "plaiwoo-bot@users.noreply.github.com"
+# Configure git with constech-worker for consistency  
+RUN git config --system user.name "constech-worker" && \
+  git config --system user.email "constech-worker@users.noreply.github.com"
 
 # Prevent accidental npm usage - alias npm to pnpm (while still root)
 RUN echo '#!/bin/bash' > /usr/local/bin/npm && \

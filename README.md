@@ -41,18 +41,29 @@ constech-worker dispatch --prompt "Add user authentication" --create-issue
 ## 🛠️ How It Works
 
 1. **Issue Processing**: Creates or processes GitHub issues with smart title extraction
-2. **Container Orchestration**: Spins up isolated Docker containers with Claude Code
-3. **Autonomous Development**: Claude Code implements features following your project patterns
-4. **Quality Assurance**: Runs configured quality checks (typecheck, lint, build)
-5. **PR Management**: Creates pull requests with proper reviewers and project status
-6. **Project Updates**: Automatically updates GitHub project boards
+2. **Container Orchestration**: Spins up isolated Docker containers using devcontainer configuration
+3. **Git Isolation**: Creates clean workspace in container from fresh GitHub repository clone
+4. **Persistent Authentication**: Uses Docker volume for Claude Code authentication across executions  
+5. **Autonomous Development**: Claude Code implements features following your project patterns
+6. **Quality Assurance**: Runs configured quality checks (typecheck, lint, biome check, build)
+7. **PR Management**: Creates pull requests with proper reviewers and project status
+8. **Project Updates**: Automatically updates GitHub project boards
+
+### Container Architecture
+
+- **Base Image**: Uses your project's `.devcontainer/Dockerfile` for consistent development environment
+- **Git Isolation**: Creates isolated workspace in `/tmp/worker-shared/workspace-*` from clean GitHub clone
+- **Authentication**: Persistent Docker volume (`constech-worker-claude`) maintains Claude Code authentication
+- **User Context**: Runs as `worker` user with `/home/worker/.claude` configuration directory
+- **Repository Access**: Read-only mount of host repository at `/workspace/repo`
+- **Complete Isolation**: Host repository remains unchanged during container execution
 
 ## 📋 Requirements
 
 - **Node.js** 20+ 
-- **Docker** (running)
+- **Docker** (running) with persistent volume support
 - **GitHub CLI** (`gh`) authenticated
-- **Claude Code** authenticated
+- **Claude Code** authenticated with persistent Docker volume setup
 - **Git repository** with GitHub remote
 
 ## 🏗️ Installation & Setup
@@ -176,7 +187,7 @@ Use magic comments to wrap GitHub workflow sections that should be **excluded fr
     "workingBranch": "staging"
   },
   "github": {
-    "projectId": "PVT_kwDODJAhwc4A4gK5",
+    "projectId": "PVT_kwDOExample123",
     "statusFieldId": "PVTSSF_lADODJAhwc4A4gK5zgtdZMI",
     "statusOptions": {
       "backlog": "f75ad846",
@@ -230,16 +241,47 @@ Use magic comments to wrap GitHub workflow sections that should be **excluded fr
 
 ### Claude Code Setup
 
-1. **Authenticate Claude Code**:
+Claude Code authentication is handled through a **persistent Docker volume** that maintains your authentication across container executions.
+
+1. **Authenticate Claude Code** (one-time setup):
    ```bash
    claude
-   # Follow authentication prompts
+   # Follow authentication prompts to authenticate on your host system
    ```
 
-2. **Verify Authentication**:
+2. **Set up Docker Volume Authentication**:
+   ```bash
+   # If using a project with existing setup scripts
+   ./scripts/worker/setup-claude-auth.sh
+   
+   # Or manually create the persistent volume (first time setup)
+   docker volume create constech-worker-claude
+   
+   # Then run an interactive container to authenticate Claude Code
+   docker run -it --rm \
+     --mount source=constech-worker-claude,target=/home/worker/.claude,type=volume \
+     -e CLAUDE_CONFIG_DIR=/home/worker/.claude \
+     --user worker \
+     node:20 bash -c "
+       # Install Claude Code temporarily for authentication
+       npm install -g @anthropic-ai/claude-code &&
+       claude --version &&
+       echo 'Run: claude' &&
+       echo 'Follow prompts to authenticate, then exit' &&
+       bash
+     "
+   ```
+
+3. **Verify Authentication**:
    ```bash
    constech-worker doctor
    ```
+
+**How Authentication Works:**
+- Claude Code authentication is stored in persistent Docker volume `constech-worker-claude`
+- Authentication persists across all container executions
+- No need to re-authenticate for each workflow run
+- Container runs with `worker` user and `/home/worker/.claude` config directory
 
 ## 📖 Workflow Examples
 
@@ -306,9 +348,37 @@ GITHUB_TOKEN="your_bot_token" gh api user --jq '.login'
 
 **❌ Claude Code not authenticated**
 ```bash
-# Re-authenticate Claude Code
+# Re-authenticate Claude Code on host
 claude
 # Follow the prompts
+
+# Check Docker volume authentication
+docker run --rm --mount source=constech-worker-claude,target=/home/worker/.claude,type=volume alpine ls -la /home/worker/.claude/
+# Should show .claude.json and other authentication files
+
+# If volume is empty, you may need to run setup script
+./scripts/worker/setup-claude-auth.sh  # If available in your project
+```
+
+**❌ Container execution fails**
+```bash
+# Check Docker volume exists
+docker volume ls | grep constech-worker-claude
+
+# Check container logs
+docker logs $(docker ps -q -l)
+
+# Verify devcontainer can be built
+constech-worker doctor
+```
+
+**❌ Git isolation not working**
+```bash
+# Verify you're on the correct branch on host
+git branch --show-current
+
+# Check if workspace isolation is working
+# Host repository should remain unchanged during execution
 ```
 
 ### Debug Commands
@@ -358,10 +428,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- Built on the foundation of the Plaiwoo autonomous development system
 - Powered by [Claude Code](https://claude.ai/code) for AI-driven development
 - Utilizes [GitHub CLI](https://cli.github.com/) for seamless GitHub integration
+- Built with Docker containers for secure, isolated execution environments
 
 ---
 
-**Made with ❤️ by the Constech team**
+**Made by Christian De Santis - [constech.dev](https://constech.dev)**

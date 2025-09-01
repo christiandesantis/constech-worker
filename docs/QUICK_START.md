@@ -6,10 +6,11 @@ This guide will get you up and running with Constech Worker in under 5 minutes.
 
 Before starting, ensure you have:
 - **Node.js 20+** installed
-- **Docker** running on your system  
+- **Docker** running on your system with volume support
 - **GitHub CLI** (`gh`) installed and authenticated
 - **Claude Code** installed and authenticated
 - A **GitHub repository** you want to automate
+- **Devcontainer** configuration (`.devcontainer/`) in your project (optional but recommended)
 
 ## Step 1: Install Constech Worker
 
@@ -72,9 +73,10 @@ constech-worker doctor
 
 This checks:
 - Node.js version
-- Docker status
-- GitHub CLI authentication
-- Claude Code authentication
+- Docker status and volume support
+- GitHub CLI authentication  
+- Claude Code authentication (persistent volume)
+- Devcontainer configuration
 - Configuration validity
 - Environment variables
 
@@ -99,11 +101,14 @@ constech-worker dispatch --prompt "Refactor authentication middleware to support
 
 The autonomous workflow will:
 
-1. **🌿 Create Feature Branch** from your working branch (usually `staging`)
-2. **🤖 Execute Claude Code** in isolated Docker container
-3. **⚙️ Run Quality Checks** (typecheck, lint, build)
-4. **📝 Create Pull Request** with proper reviewers assigned
-5. **📋 Update Project Status** to "In Review"
+1. **🐳 Prepare Container** using your devcontainer configuration
+2. **🔐 Load Authentication** from persistent Docker volume
+3. **📂 Create Isolated Workspace** from clean GitHub repository clone
+4. **🌿 Create Feature Branch** from your working branch (usually `staging`)
+5. **🤖 Execute Claude Code** with complete project context and instructions
+6. **⚙️ Run Quality Checks** (typecheck, lint, build)
+7. **📝 Create Pull Request** with proper reviewers assigned
+8. **📋 Update Project Status** to "In Review"
 
 ## Example Output
 
@@ -160,9 +165,16 @@ constech-worker init
 
 **❌ "Claude Code not authenticated"**
 ```bash
-# Re-authenticate Claude Code
+# Re-authenticate Claude Code on host
 claude
 # Follow the authentication prompts
+
+# Check Docker volume contains authentication
+docker volume ls | grep constech-worker-claude
+docker run --rm --mount source=constech-worker-claude,target=/home/worker/.claude,type=volume alpine ls -la /home/worker/.claude/
+
+# If volume is empty, you may need to set up authentication
+# Check if your project has setup scripts available
 ```
 
 ### Get Help
