@@ -45,19 +45,12 @@ export class McpManager {
       mcpServers: {} as Record<string, any>
     };
 
-    // Load and merge configurations for enabled servers
+    // Generate configurations for enabled servers dynamically
     for (const serverName of enabledServers) {
-      try {
-        // Look for MCP template in dist/templates (copied during build)
-        const templatePath = join(__dirname, `../templates/mcp-configs/${serverName}.json`);
-        logger.debug(`Looking for MCP template at: ${templatePath}`);
-        const templateContent = await fs.readFile(templatePath, 'utf-8');
-        const serverConfig = JSON.parse(templateContent);
-        
-        // Merge server configuration
-        Object.assign(mcpConfig.mcpServers, serverConfig.mcpServers);
-      } catch (error: any) {
-        logger.warning(`Failed to load MCP template for ${serverName}: ${error?.message}`);
+      const serverConfig = this.generateServerConfig(serverName);
+      if (serverConfig) {
+        Object.assign(mcpConfig.mcpServers, serverConfig);
+        logger.debug(`Generated MCP config for ${serverName}`);
       }
     }
 
@@ -104,6 +97,42 @@ export class McpManager {
     }
 
     return commands;
+  }
+
+  /**
+   * Generate MCP server configuration dynamically
+   */
+  private generateServerConfig(serverName: string): Record<string, any> | null {
+    const packageName = this.getMcpPackageName(serverName);
+    if (!packageName) return null;
+
+    const serverConfigs: Record<string, any> = {
+      github: {
+        github: {
+          command: "node",
+          args: ["/usr/local/share/npm-global/lib/node_modules/@modelcontextprotocol/server-github/dist/index.js"],
+          env: {
+            GITHUB_TOKEN: "${GITHUB_TOKEN}"
+          }
+        }
+      },
+      semgrep: {
+        semgrep: {
+          command: "node", 
+          args: ["/usr/local/share/npm-global/lib/node_modules/@modelcontextprotocol/server-semgrep/dist/index.js"],
+          env: {}
+        }
+      },
+      ref: {
+        ref: {
+          command: "node",
+          args: ["/usr/local/share/npm-global/lib/node_modules/@modelcontextprotocol/server-ref/dist/index.js"], 
+          env: {}
+        }
+      }
+    };
+
+    return serverConfigs[serverName] || null;
   }
 
   /**

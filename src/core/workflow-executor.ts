@@ -10,6 +10,7 @@ import { McpManager } from './mcp-manager.js';
 import { ClaudeMdParser } from './claude-md-parser.js';
 import { cleanupManager } from '../utils/cleanup-manager.js';
 import ora from 'ora';
+import chalk from 'chalk';
 
 export interface WorkflowOptions {
   botToken: string;
@@ -701,6 +702,10 @@ echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude c
           const result = await exec.inspect();
           if (result.ExitCode === 0) {
             spinner.succeed('Workflow completed successfully!');
+            
+            // Display clean summary from container output
+            this.displayContainerSummary(output);
+            
             resolve();
           } else {
             spinner.fail(`Workflow failed with exit code: ${result.ExitCode}`);
@@ -719,6 +724,92 @@ echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude c
         reject(error);
       });
     });
+  }
+
+  private displayContainerSummary(rawOutput: string): void {
+    try {
+      // Clean and process the container output
+      const cleanOutput = rawOutput
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // Remove control characters
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI escape sequences
+        .replace(/[\uFFF0-\uFFFF]/g, '') // Remove Unicode specials
+        .trim();
+
+      // Extract meaningful lines from the output
+      const outputLines = cleanOutput
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => {
+          return line && 
+                 !line.startsWith('Step ') &&
+                 !line.includes('Debug:') &&
+                 !line.includes('Claude authentication verified') &&
+                 !line.includes('Preparing isolated workspace') &&
+                 !line.includes('Workspace prepared') &&
+                 !line.includes('Starting Claude Code execution') &&
+                 !line.includes('Executing Claude Code') &&
+                 !line.includes('Claude Code execution completed') &&
+                 !line.match(/^[#;A\d'"%()\-\s]*$/) && // Skip lines with only weird chars
+                 !line.match(/^\d{2}:\d{2}:\d{2}/) && // Skip timestamp lines
+                 line.length > 10; // Skip very short lines
+        });
+
+      // Look for key completion indicators and meaningful content
+      const meaningfulLines = outputLines.filter(line => {
+        return line.includes('✅') || 
+               line.includes('Created') ||
+               line.includes('Updated') ||
+               line.includes('Fixed') ||
+               line.includes('Added') ||
+               line.includes('Implemented') ||
+               line.includes('Modified') ||
+               line.includes('Pull request') ||
+               line.includes('Branch') ||
+               line.includes('Commit') ||
+               line.includes('Issue') ||
+               line.includes('Success') ||
+               line.includes('Complete') ||
+               (line.length > 20 && !line.includes('$') && !line.includes('echo'));
+      });
+
+      if (meaningfulLines.length > 0) {
+        console.log('\n' + '━'.repeat(60));
+        console.log('🤖 Claude Code Execution Summary');
+        console.log('━'.repeat(60));
+        
+        // Display up to 10 most meaningful lines
+        const displayLines = meaningfulLines.slice(-10);
+        displayLines.forEach(line => {
+          // Add nice formatting with colors
+          if (line.includes('✅') || line.includes('Success') || line.includes('Complete')) {
+            console.log(`   ${chalk.green('✅')} ${line.replace(/✅\s*/, '')}`);
+          } else if (line.includes('Created') || line.includes('Added')) {
+            console.log(`   ${chalk.blue('➕')} ${line}`);
+          } else if (line.includes('Updated') || line.includes('Modified')) {
+            console.log(`   ${chalk.yellow('📝')} ${line}`);
+          } else if (line.includes('Pull request') || line.includes('PR')) {
+            console.log(`   ${chalk.magenta('🔄')} ${line}`);
+          } else if (line.includes('Branch')) {
+            console.log(`   ${chalk.cyan('🌿')} ${line}`);
+          } else {
+            console.log(`   ${chalk.gray('•')} ${line}`);
+          }
+        });
+        
+        console.log('━'.repeat(60) + '\n');
+      } else {
+        // Fallback - just show that execution completed
+        console.log('\n' + '━'.repeat(60));
+        console.log('🤖 Claude Code Execution Summary');
+        console.log('━'.repeat(60));
+        console.log(`   ${chalk.green('✅')} Autonomous development workflow completed successfully`);
+        console.log('━'.repeat(60) + '\n');
+      }
+      
+    } catch (error) {
+      // Don't fail the whole workflow if summary display fails
+      logger.debug('Failed to display container summary:', error);
+    }
   }
 
   private async cleanupContainer(containerId: string): Promise<void> {

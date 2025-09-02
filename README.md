@@ -65,6 +65,7 @@ constech-worker dispatch --prompt "Add user authentication" --create-issue
 - **GitHub CLI** (`gh`) authenticated
 - **Claude Code** authenticated with persistent Docker volume setup
 - **Git repository** with GitHub remote
+- **`.devcontainer/` configuration** (optional but strongly recommended for consistent development environment)
 
 ## 🏗️ Installation & Setup
 
@@ -85,6 +86,70 @@ The `init` command will:
 - Create `.constech-worker.json` configuration
 - Validate system requirements
 
+### .devcontainer Setup (Required)
+
+Constech Worker uses Docker containers with your project's `.devcontainer` configuration for consistent, isolated development environments. 
+
+#### **First-time Setup**: Copy Templates to Your Project
+
+If you don't have a `.devcontainer` directory in your project, copy the templates:
+
+```bash
+# From your project root directory
+mkdir -p .devcontainer
+
+# Copy templates from constech-worker installation
+cp "$(npm root -g)/constech-worker/templates/devcontainer/"* .devcontainer/
+
+# Verify files were copied
+ls -la .devcontainer/
+# Should show: devcontainer.json, Dockerfile
+```
+
+#### **Template Files Included**:
+
+**`.devcontainer/devcontainer.json`**: Container configuration with:
+- Worker user setup (`remoteUser: "worker"`)
+- Persistent Docker volume for Claude authentication
+- Node.js memory optimization
+- PNPM configuration for frontend projects
+
+**`.devcontainer/Dockerfile`**: Container environment with:
+- Node.js 20 base image
+- Claude Code installation
+- GitHub MCP server (enabled by default)
+- Development tools (git, gh, jq, etc.)
+- Proper user permissions and environment
+
+#### **Customization**:
+
+**Timezone**: Update in `devcontainer.json`:
+```json
+"args": {
+  "TZ": "${localEnv:TZ:America/Your_Timezone}"
+}
+```
+
+**Additional MCP Servers**: Uncomment in `Dockerfile`:
+```dockerfile
+# Optional MCP servers (uncomment to enable):
+RUN npm install -g @modelcontextprotocol/server-semgrep
+RUN npm install -g @modelcontextprotocol/server-ref
+```
+
+Then update your `.constech-worker.json`:
+```json
+{
+  "docker": {
+    "mcpServers": {
+      "github": true,
+      "ref": true,      // Enable if uncommented above  
+      "semgrep": true   // Enable if uncommented above
+    }
+  }
+}
+```
+
 ### Environment Variables
 
 Create or update your `.env` file:
@@ -93,7 +158,7 @@ Create or update your `.env` file:
 # GitHub bot token (required)
 GITHUB_BOT_TOKEN=ghp_your_bot_token_here
 
-# Default reviewer (optional)
+# Default reviewer (required)
 REVIEWER_USER=your-github-username
 
 # Custom configuration (optional)
@@ -120,6 +185,24 @@ constech-worker dispatch --prompt "Implement user authentication" --create-issue
 # Update configuration
 constech-worker configure github.projectId PVT_xyz123
 ```
+
+### --create-issue Behavior
+
+When using the `--create-issue` flag with a prompt, constech-worker automatically extracts the issue title and description:
+
+**Title Extraction**: The first sentence (before the first dot `.`) becomes the issue title
+**Description**: Everything after the first dot becomes the issue description (the dot is removed)
+
+**Example**:
+```bash
+constech-worker dispatch --prompt "Add user authentication system. Include login/logout functionality, password hashing, and session management." --create-issue
+```
+
+**Results in**:
+- **Issue Title**: "Add user authentication system"  
+- **Issue Description**: "Include login/logout functionality, password hashing, and session management."
+
+**Fallback**: If no dot is found, the first 50 characters become the title and the full prompt becomes the description.
 
 ### Advanced Usage
 
@@ -277,7 +360,7 @@ Claude Code authentication is handled through a **persistent Docker volume** tha
 2. **Set up Docker Volume Authentication**:
    ```bash
    # If using a project with existing setup scripts
-   ./scripts/worker/setup-claude-auth.sh
+   ./scripts/setup-claude-auth.sh
    
    # Or manually create the persistent volume (first time setup)
    docker volume create constech-worker-claude
@@ -382,7 +465,7 @@ docker run --rm --mount source=constech-worker-claude,target=/home/worker/.claud
 # Should show .claude.json and other authentication files
 
 # If volume is empty, you may need to run setup script
-./scripts/worker/setup-claude-auth.sh  # If available in your project
+./scripts/setup-claude-auth.sh  # If available in your project
 ```
 
 **❌ Container execution fails**
@@ -395,6 +478,24 @@ docker logs $(docker ps -q -l)
 
 # Verify devcontainer can be built
 constech-worker doctor
+```
+
+**❌ .devcontainer files missing or outdated**
+```bash
+# Copy latest templates from constech-worker
+cp "$(npm root -g)/constech-worker/templates/devcontainer/"* .devcontainer/
+
+# Verify templates are up to date with working configuration
+# Template files should match the working plaiwoo-frontend setup
+```
+
+**❌ MCP servers not working**
+```bash
+# MCP configs are generated dynamically - no need for static mcp-configs/ directory
+# Configuration is controlled through .constech-worker.json:
+constech-worker configure docker.mcpServers.github true
+constech-worker configure docker.mcpServers.semgrep false
+constech-worker configure docker.mcpServers.ref false
 ```
 
 **❌ Git isolation not working**

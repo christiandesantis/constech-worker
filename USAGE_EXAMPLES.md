@@ -79,11 +79,17 @@ constech-worker dispatch --prompt "Form validation error messages not displaying
 ```
 
 **What happens:**
-- Extracts title from first sentence: "feat: Add dark mode toggle to settings page"
-- Creates GitHub issue with structured description
-- Adds issue to project board with "Ready" status
-- Proceeds with normal development workflow
-- Links PR to created issue
+- **Title Extraction**: First sentence before dot (.) becomes issue title: "Add dark mode toggle to settings page"
+- **Description**: Remaining content becomes issue description: "Users should be able to switch between light and dark themes with persistent storage"
+- **Issue Creation**: Creates GitHub issue with `feat:` prefix and structured description
+- **Project Management**: Adds issue to project board with "Ready" status
+- **Development**: Proceeds with normal development workflow
+- **Linking**: Links PR to created issue when workflow completes
+
+**Title/Description Logic:**
+- Prompt: `"Add dark mode toggle to settings page. Users should be able to switch..."`
+- Title: `"Add dark mode toggle to settings page"` (everything before first dot)
+- Description: `"Users should be able to switch..."` (everything after first dot, dot removed)
 
 ## Advanced Scenarios
 

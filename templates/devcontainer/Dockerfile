@@ -5,7 +5,7 @@ ENV TZ="$TZ"
 
 ARG CLAUDE_CODE_VERSION=latest
 
-# Install basic development tools and iptables/ipset
+# Install basic development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
@@ -17,11 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   unzip \
   gnupg2 \
   gh \
-  iptables \
-  ipset \
-  iproute2 \
-  dnsutils \
-  aggregate \
   jq \
   nano \
   vim \
@@ -101,16 +96,16 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Copy and set up firewall script
-COPY init-firewall.sh /usr/local/bin/
-USER root
-RUN chmod +x /usr/local/bin/init-firewall.sh && \
-  echo "$USERNAME ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/$USERNAME-firewall && \
-  chmod 0440 /etc/sudoers.d/$USERNAME-firewall
+# Install MCP servers (GitHub enabled by default, others commented)
+RUN npm install -g @modelcontextprotocol/server-github
+# Optional MCP servers (uncomment to enable):
+# RUN npm install -g @modelcontextprotocol/server-semgrep
+# RUN npm install -g @modelcontextprotocol/server-ref
 
-# Configure git with constech-worker for consistency  
-RUN git config --system user.name "constech-worker" && \
-  git config --system user.email "constech-worker@users.noreply.github.com"
+# Configure git with plaiwoo-bot for consistency  
+USER root
+RUN git config --system user.name "plaiwoo-bot" && \
+  git config --system user.email "plaiwoo-bot@users.noreply.github.com"
 
 # Prevent accidental npm usage - alias npm to pnpm (while still root)
 RUN echo '#!/bin/bash' > /usr/local/bin/npm && \
