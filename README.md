@@ -205,9 +205,34 @@ Use magic comments to wrap GitHub workflow sections that should be **excluded fr
     "qualityChecks": ["pnpm typecheck", "pnpm check", "pnpm build"],
     "packageManager": "pnpm",
     "reviewerEnvVar": "REVIEWER_USER"
+  },
+  "git": {
+    "authorName": "your-bot",
+    "authorEmail": "your-bot@users.noreply.github.com"
   }
 }
 ```
+
+### Git Configuration
+
+The `git` section in the configuration is crucial for CI/CD compatibility:
+
+```json
+{
+  "git": {
+    "authorName": "your-bot",
+    "authorEmail": "your-bot@users.noreply.github.com"
+  }
+}
+```
+
+**Important**: The email address must be associated with your GitHub bot account to ensure:
+- ✅ Vercel deployments work correctly
+- ✅ GitHub shows proper commit attribution
+- ✅ CI/CD systems recognize the commits
+- ✅ Commit signing and verification work
+
+**Recommended format**: `{bot-username}@users.noreply.github.com`
 
 ### Environment Variables
 

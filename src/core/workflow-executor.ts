@@ -453,6 +453,9 @@ CMD ["sleep", "infinity"]
           'NPM_CONFIG_PREFIX=/usr/local/share/npm-global', // Match devcontainer config
           'HOME=/home/worker', // Use worker home directory like dispatch-worker.sh
           'CLAUDE_CONFIG_DIR=/home/worker/.claude', // Set Claude config directory like dispatch-worker.sh
+          `BOT_APP_TOKEN=${this.options.botToken}`, // Pass GitHub bot token
+          `GITHUB_BOT_TOKEN=${this.options.botToken}`, // Alternative variable name
+          `BOT_USER=${this.config.bot.username || 'constech-worker'}`, // Bot username
         ],
       });
 
@@ -576,8 +579,8 @@ cd "\$WORK_DIR"
 
 # Initialize empty git repo (matches workflow-engine.sh exactly)
 git init
-git config user.name "constech-worker"
-git config user.email "constech-worker@users.noreply.github.com"
+git config user.name "${this.config.git.authorName}"
+git config user.email "${this.config.git.authorEmail}"
 
 # Configure git authentication for fetching from origin (matches workflow-engine.sh)
 echo "Configuring git authentication..." >&2
@@ -639,12 +642,14 @@ cat > /tmp/claude-prompt.txt << 'CLAUDE_PROMPT_EOF'
 ${fullPrompt.replace(/'/g, "'\\''")}
 CLAUDE_PROMPT_EOF
 
-# Execute Claude Code with the full workflow prompt
+# Execute Claude Code with the full workflow prompt (matching working implementation)
 echo "Executing Claude Code with generated prompt..." >&2
-claude --print \\
-  --dangerously-skip-permissions \\
+
+# Execute with explicit config directory
+echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude claude \\
+  --print \\
   --permission-mode bypassPermissions \\
-  "\$(cat /tmp/claude-prompt.txt)"
+  --dangerously-skip-permissions
 
 echo "Step 8: Claude Code execution completed!" >&2
 `;

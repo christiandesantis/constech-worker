@@ -46,6 +46,10 @@ export const ConfigSchema = z.object({
     reviewerEnvVar: z.string().default('REVIEWER_USER'),
     defaultReviewer: z.string().nullable().optional(),
   }),
+  git: z.object({
+    authorName: z.string().default('constech-worker'),
+    authorEmail: z.string().default('constech-worker@users.noreply.github.com'),
+  }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -74,5 +78,9 @@ export const DefaultConfig: Partial<Config> = {
     qualityChecks: ['pnpm typecheck', 'pnpm check', 'pnpm build'],
     packageManager: 'pnpm',
     reviewerEnvVar: 'REVIEWER_USER',
+  },
+  git: {
+    authorName: 'constech-worker',
+    authorEmail: 'constech-worker@users.noreply.github.com',
   },
 };

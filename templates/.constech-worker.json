@@ -34,5 +34,9 @@
     "packageManager": "pnpm",
     "reviewerEnvVar": "REVIEWER_USER",
     "defaultReviewer": null
+  },
+  "git": {
+    "authorName": "constech-worker",
+    "authorEmail": "constech-worker@users.noreply.github.com"
   }
 }
