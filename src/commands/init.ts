@@ -3,6 +3,7 @@ import ora from 'ora';
 import { ConfigManager } from '../core/config-manager.js';
 import { ProjectDetector } from '../core/project-detector.js';
 import { logger } from '../utils/logger.js';
+import { showQuickBanner } from '../utils/banner.js';
 
 interface InitOptions {
   force?: boolean;
@@ -10,6 +11,9 @@ interface InitOptions {
 }
 
 export async function initCommand(options: InitOptions = {}): Promise<void> {
+  // Show quick banner for init
+  await showQuickBanner();
+  
   const configManager = new ConfigManager(options.config);
   
   logger.info('🚀 Initializing Constech Worker...');

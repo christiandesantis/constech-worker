@@ -820,12 +820,15 @@ echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude c
       return '';
     }
 
-    // Create temporary directory for MCP config
-    const tempDir = join(process.cwd(), '.tmp');
-    await fs.mkdir(tempDir, { recursive: true });
+    // Create temporary directory for MCP config in system temp (not project directory)
+    const osModule = await import('os');
+    const tempDir = await fs.mkdtemp(join(osModule.tmpdir(), 'constech-mcp-'));
 
     // Generate MCP configuration file
     const configPath = await this.mcpManager.generateMcpConfig(tempDir);
+    
+    // Store temp dir for cleanup
+    this.tempDockerDir = tempDir;
     
     logger.debug(`MCP configuration prepared for: ${enabledServers.join(', ')}`);
     return configPath;

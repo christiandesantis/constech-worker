@@ -3,6 +3,7 @@ import { ConfigManager } from '../core/config-manager.js';
 import { WorkflowExecutor } from '../core/workflow-executor.js';
 import { logger } from '../utils/logger.js';
 import { exitGracefully } from '../utils/cleanup-manager.js';
+import { showAnimatedBanner } from '../utils/banner.js';
 
 interface DispatchOptions {
   issue?: string;
@@ -24,7 +25,10 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
     await exitGracefully(1, 'Cannot use --create-issue with --issue (issue already exists)');
   }
 
-  logger.info('🚀 Starting Constech Worker dispatch...');
+  // Show animated banner
+  await showAnimatedBanner();
+
+  logger.info('🚀 Starting autonomous development workflow...');
 
   // Load configuration
   const configManager = new ConfigManager();

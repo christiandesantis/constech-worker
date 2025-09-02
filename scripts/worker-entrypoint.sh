@@ -38,16 +38,13 @@ log_info "Container: $(hostname)"
 log_info "User: $(whoami)"
 
 # Validate environment
-required_vars=("GITHUB_TOKEN" "BOT_APP_TOKEN" "CURRENT_USER" "REPOSITORY_OWNER" "REPOSITORY_NAME")
+required_vars=("GITHUB_TOKEN" "BOT_APP_TOKEN" "CURRENT_USER" "REPOSITORY_OWNER" "REPOSITORY_NAME" "REVIEWER_USER")
 for var in "${required_vars[@]}"; do
     if [[ -z "${!var:-}" ]]; then
         log_error "Missing required environment variable: $var"
         exit 1
     fi
 done
-
-# Set defaults
-REVIEWER_USER=${REVIEWER_USER:-"christiandesantis"}
 
 log_info "Environment validated"
 log_info "Repository: $REPOSITORY_OWNER/$REPOSITORY_NAME"
