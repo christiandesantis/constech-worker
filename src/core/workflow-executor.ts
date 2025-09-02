@@ -8,6 +8,7 @@ import { Config } from './config-schema.js';
 import { GitHubClient } from './github-client.js';
 import { McpManager } from './mcp-manager.js';
 import { ClaudeMdParser } from './claude-md-parser.js';
+import { cleanupManager } from '../utils/cleanup-manager.js';
 import ora from 'ora';
 
 export interface WorkflowOptions {
@@ -31,6 +32,8 @@ export class WorkflowExecutor {
   private claudeMdParser: ClaudeMdParser;
   private tempDockerDir?: string;
   private tempScriptDir?: string;
+  private currentContainerId?: string;
+  private cleanupFunction?: () => Promise<void>;
 
   constructor(config: Config, options: WorkflowOptions) {
     this.config = config;
@@ -42,37 +45,60 @@ export class WorkflowExecutor {
   }
 
   async execute(execution: ExecutionOptions): Promise<void> {
-    logger.info('Starting workflow execution...');
+    console.log(''); // Add space before workflow
+    logger.info('🚀 Starting autonomous development workflow...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // Step 1: Create GitHub issue if requested
+    // Phase 1: GitHub Issue Management
     let issueNumber = execution.issueNumber;
     if (execution.createIssue && execution.prompt) {
+      const spinner = ora('Creating GitHub issue...').start();
       issueNumber = await this.createGitHubIssue(execution.prompt);
-      logger.success(`Created GitHub issue #${issueNumber}`);
+      spinner.succeed(`Created GitHub issue #${issueNumber}`);
     }
 
-    // Step 2: Set issue status to "In progress" if working on an issue
     if (issueNumber && this.config.github?.projectId) {
+      const spinner = ora('Setting issue status...').start();
       await this.setIssueStatus(issueNumber, 'inProgress');
-      logger.success(`Issue #${issueNumber} status set to "In progress"`);
+      spinner.succeed(`Issue #${issueNumber} status set to "In Progress"`);
     }
 
-    // Step 3: Prepare Docker container
+    // Phase 2: Container Preparation
+    console.log('\n📦 Preparing development environment...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     const containerId = await this.prepareContainer();
-    logger.success('Container prepared and ready');
+    this.currentContainerId = containerId;
+    
+    // Register cleanup function for graceful shutdown
+    this.cleanupFunction = async () => {
+      await this.cleanupContainer(containerId);
+    };
+    cleanupManager.registerCleanup(this.cleanupFunction);
+    
+    logger.success('✅ Development environment ready');
 
     try {
-      // Step 4: Execute Claude Code workflow
+      // Phase 3: Claude Code Execution
+      console.log('\n🤖 Executing autonomous development...');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       await this.executeWorkflow(containerId, {
         issueNumber,
         prompt: execution.prompt,
       });
 
-      logger.success('Claude Code execution completed');
+      console.log('\n🎉 Workflow completed successfully!');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     } finally {
+      // Unregister cleanup function since we're handling it manually
+      if (this.cleanupFunction) {
+        cleanupManager.unregisterCleanup(this.cleanupFunction);
+        this.cleanupFunction = undefined;
+      }
+      
       // Cleanup container
       await this.cleanupContainer(containerId);
+      this.currentContainerId = undefined;
     }
   }
 
@@ -181,8 +207,6 @@ ${description}
   }
 
   private async prepareContainer(): Promise<string> {
-    const spinner = ora('Preparing Docker container...').start();
-    
     try {
       // Build or pull container image
       const imageName = await this.ensureContainerImage();
@@ -203,7 +227,12 @@ ${description}
         containerBinds.push(`${mcpConfigPath}:/tmp/mcp-config.json:ro`);
       }
       
+      // Generate descriptive container name with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const containerName = `constech-worker-${this.config.project.name}-${timestamp}`;
+
       const container = await this.docker.createContainer({
+        name: containerName,
         Image: imageName,
         WorkingDir: '/workspace',
         Cmd: ['sleep', 'infinity'], // Keep container alive for exec commands
@@ -246,11 +275,11 @@ ${description}
         AttachStderr: true,
       });
 
-      spinner.succeed('Container created successfully');
+      logger.success('✅ Container created successfully');
       return container.id;
       
     } catch (error) {
-      spinner.fail('Failed to prepare container');
+      logger.error('✖ Failed to prepare container');
       throw error;
     }
   }
@@ -270,7 +299,7 @@ ${description}
   }
 
   private async buildDevContainer(): Promise<string> {
-    const spinner = ora('Building dev container image...').start();
+    const spinner = ora('Building development container...').start();
     
     try {
       // Use devcontainer CLI to build the image (let it generate its own name)
@@ -308,7 +337,7 @@ ${description}
         imageName = `vsc-${this.config.project.name}-${Date.now()}`;
       }
       
-      spinner.succeed(`Dev container image built: ${imageName}`);
+      spinner.succeed(`✅ Development container ready`);
       return imageName;
       
     } catch (error) {
@@ -456,6 +485,7 @@ CMD ["sleep", "infinity"]
           `BOT_APP_TOKEN=${this.options.botToken}`, // Pass GitHub bot token
           `GITHUB_BOT_TOKEN=${this.options.botToken}`, // Alternative variable name
           `BOT_USER=${this.config.bot.username || 'constech-worker'}`, // Bot username
+          `REVIEWER_USER=${this.options.reviewer || ''}`, // Pass reviewer to container
         ],
       });
 
@@ -531,127 +561,67 @@ Begin now.`;
     return `#!/bin/bash
 set -e
 
-# Debug info with step-by-step logging
-echo "=== CONSTECH WORKER DEBUG INFO ===" >&2
-echo "Step 1: Container started at: \$(date)" >&2
-echo "Step 2: Working directory: \$(pwd)" >&2
-
-echo "Step 3: Checking memory..." >&2
-free -h >&2 || echo "free command failed" >&2
-
-echo "Step 4: Checking Claude Code..." >&2
-echo "PATH: \$PATH" >&2
-which claude >&2 || echo "Claude Code not in PATH" >&2
-
-echo "Step 5: Listing npm global packages..." >&2
-npm list -g --depth=0 >&2 || echo "npm list failed" >&2
-
-echo "Step 6: Checking Claude Code version..." >&2
-claude --version >&2 || echo "Claude Code version check failed" >&2
-
-echo "Step 6: Debug info complete, continuing with workflow..." >&2
-
 # Initialize workspace (read-only repo mount at /workspace/repo)
 cd /workspace
-echo "Switched to workspace: \$(pwd)" >&2
 
-# Check Claude authentication (should be available via persistent volume)
-echo "Checking Claude Code authentication..." >&2
-if [[ -f "/home/worker/.claude/.claude.json" ]]; then
-    echo "Claude authentication found in persistent volume" >&2
-else
-    echo "Warning: Claude authentication not found at /home/worker/.claude/.claude.json" >&2
-    echo "You may need to run the setup-claude-auth.sh script first" >&2
-    echo "Available files in .claude directory:" >&2
-    ls -la /home/worker/.claude/ >&2 || echo "Claude directory not accessible" >&2
+# Verify Claude authentication
+if [[ ! -f "/home/worker/.claude/.claude.json" ]]; then
+    exit 1
 fi
 
-# Create completely isolated workspace following working implementation pattern
-echo "Initializing git workspace..." >&2
-echo "Creating clean isolated workspace from GitHub..." >&2
-
-# Create workspace directory in container temp location (matches workflow-engine.sh)
+# Create isolated workspace
 mkdir -p /tmp/worker-shared
 WORK_DIR="/tmp/worker-shared/workspace-\$(date +%s)"
-echo "Creating workspace directory: \$WORK_DIR" >&2
 mkdir -p "\$WORK_DIR"
 cd "\$WORK_DIR"
 
-# Initialize empty git repo (matches workflow-engine.sh exactly)
-git init
-git config user.name "${this.config.git.authorName}"
-git config user.email "${this.config.git.authorEmail}"
+# Initialize empty git repo
+git init >/dev/null 2>&1
+git config user.name "${this.config.git.authorName}" >/dev/null 2>&1
+git config user.email "${this.config.git.authorEmail}" >/dev/null 2>&1
 
-# Configure git authentication for fetching from origin (matches workflow-engine.sh)
-echo "Configuring git authentication..." >&2
-git config credential.helper store
-# Create credentials directory in /tmp instead of home directory to avoid permissions issues
+# Configure git authentication
+git config credential.helper store >/dev/null 2>&1
 mkdir -p /tmp/git-credentials
 export GIT_CONFIG_GLOBAL=/tmp/gitconfig
-git config --global credential.helper "store --file=/tmp/git-credentials/.git-credentials"
+git config --global credential.helper "store --file=/tmp/git-credentials/.git-credentials" >/dev/null 2>&1
 echo "https://\${BOT_USER}:\${BOT_APP_TOKEN}@github.com" > /tmp/git-credentials/.git-credentials
 
-# Add GitHub remote (matches workflow-engine.sh)
-git remote add origin "https://github.com/${this.config.project.owner}/${this.config.project.name}.git"
+# Add GitHub remote
+git remote add origin "https://github.com/${this.config.project.owner}/${this.config.project.name}.git" >/dev/null 2>&1
 
-# Fetch staging branch from GitHub (clean, no uncommitted changes) - matches workflow-engine.sh
-echo "Fetching clean ${this.config.project.workingBranch} branch from GitHub..." >&2
-git fetch origin ${this.config.project.workingBranch} || {
-    echo "Failed to fetch ${this.config.project.workingBranch} branch from GitHub" >&2
-    exit 1
-}
+# Fetch and checkout branch
+git fetch origin ${this.config.project.workingBranch} >/dev/null 2>&1 || exit 1
+git checkout ${this.config.project.workingBranch} >/dev/null 2>&1 || exit 1
 
-# Checkout clean staging branch (matches workflow-engine.sh)
-echo "Checking out clean ${this.config.project.workingBranch} branch..." >&2
-git checkout ${this.config.project.workingBranch} || {
-    echo "Failed to checkout ${this.config.project.workingBranch} branch" >&2
-    exit 1
-}
-
-# Verify we have clean staging (matches workflow-engine.sh)
+# Verify clean workspace
 CURRENT_BRANCH=\$(git branch --show-current)
 if [[ "\$CURRENT_BRANCH" != "${this.config.project.workingBranch}" ]]; then
-    echo "Failed to checkout ${this.config.project.workingBranch} branch, currently on: \$CURRENT_BRANCH" >&2
     exit 1
 fi
 
-# Ensure working directory is completely clean (matches workflow-engine.sh)
 UNTRACKED_FILES=\$(git status --porcelain)
 if [[ -n "\$UNTRACKED_FILES" ]]; then
-    echo "Workspace should be clean but has changes: \$UNTRACKED_FILES" >&2
     exit 1
 fi
-
-echo "Workspace prepared on clean ${this.config.project.workingBranch} branch: \$(git log --oneline -1)" >&2
 
 # Initialize MCP servers
 ${mcpInitCommands.join('\n')}
 
-# Set environment variables for Claude Code execution
+# Set environment variables
 export ISSUE_NUMBER="${execution.issueNumber || ''}"
 export PROMPT="${execution.prompt || ''}"
 
-echo "Starting Claude Code execution..." >&2
-echo "Prompt length: \${#PROMPT} characters" >&2
-
-# Execute Claude Code with the full workflow prompt
-echo "Step 7: Starting Claude Code execution with full workflow..." >&2
-
-# Write full prompt to temporary file to handle multiline content properly
+# Write prompt to file
 cat > /tmp/claude-prompt.txt << 'CLAUDE_PROMPT_EOF'
 ${fullPrompt.replace(/'/g, "'\\''")}
 CLAUDE_PROMPT_EOF
 
-# Execute Claude Code with the full workflow prompt (matching working implementation)
-echo "Executing Claude Code with generated prompt..." >&2
-
-# Execute with explicit config directory
+# Execute Claude Code
 echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude claude \\
   --print \\
   --permission-mode bypassPermissions \\
   --dangerously-skip-permissions
-
-echo "Step 8: Claude Code execution completed!" >&2
 `;
   }
 
@@ -699,15 +669,29 @@ echo "Step 8: Claude Code execution completed!" >&2
       let output = '';
       
       stream.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
+        const text = chunk.toString('utf8');
         output += text;
         
-        // Log container output to console for debugging
-        const lines = text.trim().split('\n').filter(line => line);
-        for (const line of lines) {
-          console.log(`[CONTAINER] ${line}`);
-        }
-        logger.debug('Container output:', text.trim());
+        // Clean up Docker stream output - remove ALL control characters, ANSI codes, and weird characters
+        let cleanText = text
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // Remove control characters
+          .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI escape sequences
+          .replace(/[\uFFF0-\uFFFF]/g, '') // Remove Unicode specials
+          .replace(/^[\#\;\A\d\'\"\%\(\)]/g, '') // Remove leading weird characters
+          .trim();
+        
+        const lines = cleanText.split('\n').filter(line => {
+          const trimmed = line.trim();
+          return trimmed && 
+                 !trimmed.startsWith('Step ') && 
+                 !trimmed.includes('Debug:') &&
+                 !trimmed.match(/^[#;A\d'"%()\-\s]*$/); // Skip lines with only weird chars
+        });
+        
+        // Skip displaying container output to prevent overlapping with spinner
+        // Container output is already captured in logger.debug below
+        
+        logger.debug('Container output:', cleanText.trim());
       });
 
       stream.on('end', async () => {
@@ -738,31 +722,78 @@ echo "Step 8: Claude Code execution completed!" >&2
   }
 
   private async cleanupContainer(containerId: string): Promise<void> {
+    if (!containerId) {
+      logger.debug('No container ID provided for cleanup');
+      return;
+    }
+
     try {
       const container = this.docker.getContainer(containerId);
+      
+      // First, try to get container status
+      let containerInfo;
+      try {
+        containerInfo = await container.inspect();
+        logger.debug(`Container ${containerId.slice(0, 12)} status: ${containerInfo.State.Status}`);
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          logger.debug(`Container ${containerId.slice(0, 12)} not found, already removed`);
+          return;
+        }
+        throw error;
+      }
+
+      // Stop container gracefully if running
+      if (containerInfo.State.Running) {
+        logger.debug(`Stopping container ${containerId.slice(0, 12)}...`);
+        try {
+          await container.stop({ t: 10 }); // 10 second timeout
+          logger.debug(`Container ${containerId.slice(0, 12)} stopped successfully`);
+        } catch (error: any) {
+          logger.warning(`Failed to stop container gracefully: ${error?.message}`);
+          // Continue to force removal
+        }
+      }
+
+      // Remove container
+      logger.debug(`Removing container ${containerId.slice(0, 12)}...`);
       await container.remove({ force: true });
-      logger.debug(`Container ${containerId} cleaned up`);
+      logger.debug(`Container ${containerId.slice(0, 12)} removed successfully`);
+      
     } catch (error: any) {
-      logger.warning(`Failed to cleanup container: ${error?.message}`);
+      if (error.statusCode === 404) {
+        logger.debug(`Container ${containerId.slice(0, 12)} not found, already removed`);
+      } else {
+        logger.warning(`Failed to cleanup container ${containerId.slice(0, 12)}: ${error?.message}`);
+        // Notify user of potential orphaned containers
+        console.error(`⚠️  Container cleanup failed. You may need to manually remove container: ${containerId.slice(0, 12)}`);
+        console.error(`   Run: docker rm -f ${containerId.slice(0, 12)}`);
+      }
     }
     
-    // Also cleanup temp directories
+    // Cleanup temp directories
+    await this.cleanupTempDirectories();
+  }
+
+  private async cleanupTempDirectories(): Promise<void> {
     if (this.tempDockerDir) {
       try {
         await fs.rm(this.tempDockerDir, { recursive: true, force: true });
-        logger.debug(`Temp docker directory ${this.tempDockerDir} cleaned up`);
+        logger.debug(`Temp docker directory cleaned up`);
       } catch (error: any) {
         logger.warning(`Failed to cleanup temp docker directory: ${error?.message}`);
       }
+      this.tempDockerDir = undefined;
     }
     
     if (this.tempScriptDir) {
       try {
         await fs.rm(this.tempScriptDir, { recursive: true, force: true });
-        logger.debug(`Temp script directory ${this.tempScriptDir} cleaned up`);
+        logger.debug(`Temp script directory cleaned up`);
       } catch (error: any) {
         logger.warning(`Failed to cleanup temp script directory: ${error?.message}`);
       }
+      this.tempScriptDir = undefined;
     }
   }
 

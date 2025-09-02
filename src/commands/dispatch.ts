@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import ora from 'ora';
 import { ConfigManager } from '../core/config-manager.js';
 import { WorkflowExecutor } from '../core/workflow-executor.js';
 import { logger } from '../utils/logger.js';
+import { exitGracefully } from '../utils/cleanup-manager.js';
 
 interface DispatchOptions {
   issue?: string;
@@ -17,13 +17,11 @@ interface DispatchOptions {
 export async function dispatchCommand(options: DispatchOptions = {}): Promise<void> {
   // Validate input parameters
   if (!options.issue && !options.prompt) {
-    logger.error('Either --issue or --prompt must be specified');
-    process.exit(1);
+    await exitGracefully(1, 'Either --issue or --prompt must be specified');
   }
 
   if (options.issue && options.createIssue) {
-    logger.error('Cannot use --create-issue with --issue (issue already exists)');
-    process.exit(1);
+    await exitGracefully(1, 'Cannot use --create-issue with --issue (issue already exists)');
   }
 
   logger.info('🚀 Starting Constech Worker dispatch...');
@@ -37,7 +35,7 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
   } catch (error: any) {
     logger.error('Failed to load configuration:', error?.message);
     logger.info('Run: constech-worker init');
-    process.exit(1);
+    await exitGracefully(1);
   }
 
   // Validate configuration
@@ -48,7 +46,7 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
       console.log(`  • ${chalk.red(error)}`);
     }
     logger.info('Fix configuration or use --force to proceed anyway');
-    process.exit(1);
+    await exitGracefully(1);
   }
 
   // Show what will be executed in dry-run mode
@@ -58,10 +56,9 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
   }
 
   // Validate environment
-  const botToken = process.env[config.bot.tokenEnvVar];
+  const botToken = process.env[config?.bot.tokenEnvVar ?? ""];
   if (!botToken) {
-    logger.error(`Environment variable ${config.bot.tokenEnvVar} is required`);
-    process.exit(1);
+    await exitGracefully(1, `Environment variable ${config?.bot.tokenEnvVar} is required`);
   }
 
   // Determine workflow scenario
@@ -71,31 +68,25 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
   if (options.issue) {
     logger.info(`🎯 Target: Issue #${chalk.yellow(options.issue)}`);
   }
-  
+
   if (options.prompt) {
     logger.info(`💭 Prompt: ${chalk.green(`"${options.prompt}"`)}`);
   }
 
-  const spinner = ora('Preparing workflow execution...').start();
-
   try {
     // Create workflow executor
-    const executor = new WorkflowExecutor(config, {
-      botToken,
-      reviewer: options.reviewer || process.env[config.workflow.reviewerEnvVar],
-      baseBranch: options.base || config.project.workingBranch,
+    const executor = new WorkflowExecutor(config!, {
+      botToken: botToken ?? "",
+      reviewer: options.reviewer || process.env[config?.workflow.reviewerEnvVar ?? ""],
+      baseBranch: options.base || config?.project.workingBranch,
     });
 
-    // Execute workflow
-    spinner.text = 'Executing autonomous development workflow...';
-    
+    // Execute workflow with internal progress tracking
     await executor.execute({
       issueNumber: options.issue ? parseInt(options.issue) : undefined,
       prompt: options.prompt,
       createIssue: options.createIssue,
     });
-
-    spinner.succeed('Workflow completed successfully!');
     
     // Show success summary
     console.log('\n' + chalk.bgGreen.black(' SUCCESS '));
@@ -110,7 +101,7 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
     }
 
   } catch (error: any) {
-    spinner.fail('Workflow execution failed');
+    logger.error('✖ Workflow execution failed');
     logger.error('Execution failed:', error?.message);
 
     console.log('\n' + chalk.bgRed.black(' TROUBLESHOOTING '));
@@ -119,7 +110,7 @@ export async function dispatchCommand(options: DispatchOptions = {}): Promise<vo
     console.log('• Ensure Claude Code is authenticated and working');
     console.log('• Check Docker is running and accessible');
     
-    process.exit(1);
+    await exitGracefully(1);
   }
 }
 

@@ -7,9 +7,20 @@ import { initCommand } from './commands/init.js';
 import { dispatchCommand } from './commands/dispatch.js';
 import { doctorCommand } from './commands/doctor.js';
 import { configureCommand } from './commands/configure.js';
+import { containersCommand } from './commands/containers.js';
+import { cleanupManager } from './utils/cleanup-manager.js';
 
-// Load environment variables from .env files
+// Load environment variables from .env files silently
+const originalLog = console.log;
+const originalWarn = console.warn;
+console.log = () => {};
+console.warn = () => {};
 config({ path: '.env' });
+console.log = originalLog;
+console.warn = originalWarn;
+
+// Register signal handlers for graceful shutdown
+cleanupManager.registerSignalHandlers();
 
 const program = new Command();
 
@@ -24,6 +35,7 @@ Examples:
   ${chalk.cyan('constech-worker dispatch --issue 42')}    Work on GitHub issue #42
   ${chalk.cyan('constech-worker dispatch --prompt "Add dark mode" --create-issue')}
   ${chalk.cyan('constech-worker doctor')}                 Check system requirements
+  ${chalk.cyan('constech-worker containers --clean')}     Clean up orphaned containers
   
 For more help: ${chalk.blue('https://github.com/constech-org/constech-worker')}
 `);
@@ -68,13 +80,30 @@ program
   .option('--validate', 'Validate current configuration')
   .action(configureCommand);
 
+// Container management
+program
+  .command('containers')
+  .description('Manage Docker containers used by constech-worker')
+  .option('--all', 'Show all containers (including stopped)')
+  .option('--clean', 'Remove orphaned constech-worker containers')
+  .option('--force', 'Force removal of running containers (use with --clean)')
+  .action(containersCommand);
+
 // Global error handler
 program.configureHelp({
   sortSubcommands: true,
   subcommandTerm: (cmd) => cmd.name() + ' ' + cmd.usage(),
 });
 
-program.parseAsync(process.argv).catch((error) => {
+program.parseAsync(process.argv).catch(async (error) => {
   console.error(chalk.red('Error:'), error.message);
+  
+  // Execute cleanup before exiting on error
+  try {
+    await cleanupManager.executeCleanup();
+  } catch (cleanupError) {
+    console.error(chalk.red('Cleanup failed:'), cleanupError);
+  }
+  
   process.exit(1);
 });
