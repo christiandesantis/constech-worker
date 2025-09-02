@@ -1,108 +1,123 @@
-import { promises as fs } from 'fs';
-import { join } from 'path';
-import { logger } from '../utils/logger.js';
+/** biome-ignore-all lint/suspicious/noExplicitAny: will fix later */
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+import { logger } from "../utils/logger.js";
 
 export class ClaudeMdParser {
-  private projectPath: string;
+	private projectPath: string;
 
-  constructor(projectPath: string = process.cwd()) {
-    this.projectPath = projectPath;
-  }
+	constructor(projectPath: string = process.cwd()) {
+		this.projectPath = projectPath;
+	}
 
-  /**
-   * Read and parse CLAUDE.md file
-   */
-  async readClaudeInstructions(): Promise<{
-    full: string;
-    filtered: string;
-    hasWorkerSections: boolean;
-  }> {
-    const claudeMdPath = join(this.projectPath, 'CLAUDE.md');
-    
-    try {
-      const fullContent = await fs.readFile(claudeMdPath, 'utf-8');
-      const filteredContent = this.removeWorkerSections(fullContent);
-      const hasWorkerSections = fullContent !== filteredContent;
+	/**
+	 * Read and parse CLAUDE.md file
+	 */
+	async readClaudeInstructions(): Promise<{
+		full: string;
+		filtered: string;
+		hasWorkerSections: boolean;
+	}> {
+		const claudeMdPath = join(this.projectPath, "CLAUDE.md");
 
-      logger.debug(`CLAUDE.md found at: ${claudeMdPath}`);
-      if (hasWorkerSections) {
-        logger.debug('CLAUDE.md contains worker sections that will be filtered for container');
-      }
+		try {
+			const fullContent = await fs.readFile(claudeMdPath, "utf-8");
+			const filteredContent = this.removeWorkerSections(fullContent);
+			const hasWorkerSections = fullContent !== filteredContent;
 
-      return {
-        full: fullContent,
-        filtered: filteredContent,
-        hasWorkerSections,
-      };
-    } catch (error: any) {
-      if (error?.code === 'ENOENT') {
-        logger.debug('No CLAUDE.md found in project');
-        return {
-          full: '',
-          filtered: '',
-          hasWorkerSections: false,
-        };
-      }
-      throw new Error(`Failed to read CLAUDE.md: ${error.message}`);
-    }
-  }
+			logger.debug(`CLAUDE.md found at: ${claudeMdPath}`);
+			if (hasWorkerSections) {
+				logger.debug(
+					"CLAUDE.md contains worker sections that will be filtered for container",
+				);
+			}
 
-  /**
-   * Remove sections marked for exclusion from worker containers
-   */
-  private removeWorkerSections(content: string): string {
-    // Remove sections between magic comments
-    const filtered = content.replace(
-      /<!--\s*CONSTECH-WORKER-START\s*-->[\s\S]*?<!--\s*CONSTECH-WORKER-END\s*-->/g,
-      ''
-    );
+			return {
+				full: fullContent,
+				filtered: filteredContent,
+				hasWorkerSections,
+			};
+		} catch (error: any) {
+			if (error?.code === "ENOENT") {
+				logger.debug("No CLAUDE.md found in project");
+				return {
+					full: "",
+					filtered: "",
+					hasWorkerSections: false,
+				};
+			}
+			throw new Error(`Failed to read CLAUDE.md: ${error.message}`);
+		}
+	}
 
-    // Clean up multiple consecutive newlines
-    return filtered.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-  }
+	/**
+	 * Remove sections marked for exclusion from worker containers
+	 */
+	private removeWorkerSections(content: string): string {
+		// Remove sections between magic comments
+		const filtered = content.replace(
+			/<!--\s*CONSTECH-WORKER-START\s*-->[\s\S]*?<!--\s*CONSTECH-WORKER-END\s*-->/g,
+			"",
+		);
 
-  /**
-   * Generate enhanced system prompt combining worker workflow with project context
-   */
-  generateSystemPrompt(options: {
-    workflowType: 'issue' | 'prompt';
-    issueNumber?: number;
-    prompt?: string;
-    workingBranch: string;
-    qualityChecks: string[];
-    filteredInstructions: string;
-    reviewerEnvVar?: string;
-    defaultReviewer?: string;
-    projectId?: string;
-    statusFieldId?: string;
-    inReviewStatusId?: string;
-  }): string {
-    const { workflowType, issueNumber, prompt, workingBranch, qualityChecks, filteredInstructions, reviewerEnvVar, defaultReviewer, projectId, statusFieldId, inReviewStatusId } = options;
+		// Clean up multiple consecutive newlines
+		return filtered.replace(/\n\s*\n\s*\n/g, "\n\n").trim();
+	}
 
-    // Generate reviewer instruction
-    let reviewerInstruction = 'Get reviewer from configuration';
-    if (reviewerEnvVar) {
-      reviewerInstruction = `Get reviewer from ${reviewerEnvVar} env var`;
-      if (defaultReviewer) {
-        reviewerInstruction += ` or use default: ${defaultReviewer}`;
-      }
-    } else if (defaultReviewer) {
-      reviewerInstruction = `Use configured reviewer: ${defaultReviewer}`;
-    }
+	/**
+	 * Generate enhanced system prompt combining worker workflow with project context
+	 */
+	generateSystemPrompt(options: {
+		workflowType: "issue" | "prompt";
+		issueNumber?: number;
+		prompt?: string;
+		workingBranch: string;
+		qualityChecks: string[];
+		filteredInstructions: string;
+		reviewerEnvVar?: string;
+		defaultReviewer?: string;
+		projectId?: string;
+		statusFieldId?: string;
+		inReviewStatusId?: string;
+	}): string {
+		const {
+			workflowType,
+			issueNumber,
+			prompt,
+			workingBranch,
+			qualityChecks,
+			filteredInstructions,
+			reviewerEnvVar,
+			defaultReviewer,
+			projectId,
+			statusFieldId,
+			inReviewStatusId,
+		} = options;
 
-    let workflowInstructions = `You are an autonomous development worker. Follow the complete workflow autonomously.
+		// Generate reviewer instruction
+		let reviewerInstruction = "Get reviewer from configuration";
+		if (reviewerEnvVar) {
+			reviewerInstruction = `Get reviewer from ${reviewerEnvVar} env var`;
+			if (defaultReviewer) {
+				reviewerInstruction += ` or use default: ${defaultReviewer}`;
+			}
+		} else if (defaultReviewer) {
+			reviewerInstruction = `Use configured reviewer: ${defaultReviewer}`;
+		}
+
+		let workflowInstructions = `You are an autonomous development worker. Follow the complete workflow autonomously.
 
 IMPORTANT: You are starting on a clean, up-to-date ${workingBranch} branch. Verify with \`git branch\` and \`git status\`.
 
 WORKFLOW STEPS:
 `;
 
-    if (workflowType === 'issue') {
-      workflowInstructions += `
+		if (workflowType === "issue") {
+			workflowInstructions += `
 1. Work on GitHub issue #${issueNumber}
 2. Create feature branch from ${workingBranch} (git checkout -b feat/${issueNumber}-description)
 3. Implement the solution following project conventions below
-4. Run quality checks (${qualityChecks.join(', ')})
+4. Run quality checks (${qualityChecks.join(", ")})
 5. Use /review for code review
 6. Create PR using bot authentication with BASE BRANCH: ${workingBranch}
    - ${reviewerInstruction}
@@ -114,12 +129,12 @@ WORKFLOW STEPS:
 
 CRITICAL: When creating PR, use --base ${workingBranch}. All PRs target ${workingBranch} branch.
 `;
-    } else {
-      workflowInstructions += `
+		} else {
+			workflowInstructions += `
 1. Task: ${prompt}
 2. Create feature branch from ${workingBranch} (git checkout -b feat/prompt-based-description)
 3. Implement the solution following project conventions below
-4. Run quality checks (${qualityChecks.join(', ')})
+4. Run quality checks (${qualityChecks.join(", ")})
 5. Use /review for code review
 6. Create PR using bot authentication with BASE BRANCH: ${workingBranch}
    - ${reviewerInstruction}
@@ -128,85 +143,107 @@ CRITICAL: When creating PR, use --base ${workingBranch}. All PRs target ${workin
 
 CRITICAL: When creating PR, use --base ${workingBranch}. All PRs target ${workingBranch} branch.
 `;
-    }
+		}
 
-    const projectContext = filteredInstructions.trim();
-    const separator = projectContext ? '\n\n' : '';
+		const projectContext = filteredInstructions.trim();
+		const separator = projectContext ? "\n\n" : "";
 
-    // Generate project configuration section if available
-    let projectConfigSection = '';
-    if (projectId || statusFieldId || inReviewStatusId) {
-      projectConfigSection = '\n\nGITHUB PROJECT CONFIGURATION:\n';
-      if (projectId) {
-        projectConfigSection += `- Project ID: ${projectId}\n`;
-      }
-      if (statusFieldId) {
-        projectConfigSection += `- Status Field ID: ${statusFieldId}\n`;
-      }
-      if (inReviewStatusId) {
-        projectConfigSection += `- Status: "In review" = ${inReviewStatusId}\n`;
-      }
-    }
+		// Generate project configuration section if available
+		let projectConfigSection = "";
+		if (projectId || statusFieldId || inReviewStatusId) {
+			projectConfigSection = "\n\nGITHUB PROJECT CONFIGURATION:\n";
+			if (projectId) {
+				projectConfigSection += `- Project ID: ${projectId}\n`;
+			}
+			if (statusFieldId) {
+				projectConfigSection += `- Status Field ID: ${statusFieldId}\n`;
+			}
+			if (inReviewStatusId) {
+				projectConfigSection += `- Status: "In review" = ${inReviewStatusId}\n`;
+			}
+		}
 
-    const finalPrompt = `${workflowInstructions}
+		const finalPrompt = `${workflowInstructions}
 
 PROJECT CONTEXT & CONVENTIONS:${separator}${projectContext}${projectConfigSection}
 
 Complete the entire workflow autonomously without asking for confirmation.`;
 
-    return finalPrompt;
-  }
+		return finalPrompt;
+	}
 
-  /**
-   * Validate CLAUDE.md structure and provide recommendations
-   */
-  validateStructure(content: string): {
-    isValid: boolean;
-    recommendations: string[];
-    hasWorkerSections: boolean;
-  } {
-    const recommendations: string[] = [];
-    const hasWorkerSections = /<!--\s*CONSTECH-WORKER-START\s*-->/.test(content);
+	/**
+	 * Validate CLAUDE.md structure and provide recommendations
+	 */
+	validateStructure(content: string): {
+		isValid: boolean;
+		recommendations: string[];
+		hasWorkerSections: boolean;
+	} {
+		const recommendations: string[] = [];
+		const hasWorkerSections = /<!--\s*CONSTECH-WORKER-START\s*-->/.test(
+			content,
+		);
 
-    // Check for common GitHub workflow patterns
-    const hasGitHubWorkflow = /git checkout|gh pr create|GitHub\s+CLI|pull request/i.test(content);
-    const hasBranchInstructions = /git checkout -b|feature branch|branch.*from/i.test(content);
-    const hasPRInstructions = /pr create|pull request.*create|create.*pr/i.test(content);
+		// Check for common GitHub workflow patterns
+		const hasGitHubWorkflow =
+			/git checkout|gh pr create|GitHub\s+CLI|pull request/i.test(content);
+		const hasBranchInstructions =
+			/git checkout -b|feature branch|branch.*from/i.test(content);
+		const hasPRInstructions = /pr create|pull request.*create|create.*pr/i.test(
+			content,
+		);
 
-    if (hasGitHubWorkflow && !hasWorkerSections) {
-      recommendations.push('Consider wrapping GitHub workflow instructions with magic comments for optimal container experience');
-      recommendations.push('Add <!-- CONSTECH-WORKER-START --> and <!-- CONSTECH-WORKER-END --> around workflow sections');
-    }
+		if (hasGitHubWorkflow && !hasWorkerSections) {
+			recommendations.push(
+				"Consider wrapping GitHub workflow instructions with magic comments for optimal container experience",
+			);
+			recommendations.push(
+				"Add <!-- CONSTECH-WORKER-START --> and <!-- CONSTECH-WORKER-END --> around workflow sections",
+			);
+		}
 
-    if (hasBranchInstructions && !hasWorkerSections) {
-      recommendations.push('Branch creation instructions detected - these are handled automatically by Constech Worker');
-    }
+		if (hasBranchInstructions && !hasWorkerSections) {
+			recommendations.push(
+				"Branch creation instructions detected - these are handled automatically by Constech Worker",
+			);
+		}
 
-    if (hasPRInstructions && !hasWorkerSections) {
-      recommendations.push('PR creation instructions detected - these are handled automatically by Constech Worker');
-    }
+		if (hasPRInstructions && !hasWorkerSections) {
+			recommendations.push(
+				"PR creation instructions detected - these are handled automatically by Constech Worker",
+			);
+		}
 
-    // Check for good project context
-    const hasCodeStyle = /code style|convention|pattern|architecture/i.test(content);
-    const hasFramework = /framework|library|typescript|react|vue|angular/i.test(content);
-    const hasTesting = /test|spec|jest|vitest|cypress/i.test(content);
+		// Check for good project context
+		const hasCodeStyle = /code style|convention|pattern|architecture/i.test(
+			content,
+		);
+		const hasFramework = /framework|library|typescript|react|vue|angular/i.test(
+			content,
+		);
+		const hasTesting = /test|spec|jest|vitest|cypress/i.test(content);
 
-    if (!hasCodeStyle) {
-      recommendations.push('Consider adding code style and convention guidelines');
-    }
+		if (!hasCodeStyle) {
+			recommendations.push(
+				"Consider adding code style and convention guidelines",
+			);
+		}
 
-    if (!hasFramework) {
-      recommendations.push('Consider documenting framework and technology stack information');
-    }
+		if (!hasFramework) {
+			recommendations.push(
+				"Consider documenting framework and technology stack information",
+			);
+		}
 
-    if (!hasTesting) {
-      recommendations.push('Consider adding testing guidelines and strategies');
-    }
+		if (!hasTesting) {
+			recommendations.push("Consider adding testing guidelines and strategies");
+		}
 
-    return {
-      isValid: true, // Structure is always valid, recommendations are optional
-      recommendations,
-      hasWorkerSections,
-    };
-  }
+		return {
+			isValid: true, // Structure is always valid, recommendations are optional
+			recommendations,
+			hasWorkerSections,
+		};
+	}
 }
