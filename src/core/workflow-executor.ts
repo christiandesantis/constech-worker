@@ -24,6 +24,30 @@ export interface ExecutionOptions {
   createIssue?: boolean;
 }
 
+export interface WorkflowResults {
+  issueNumber?: number;
+  issueTitle?: string;
+  issueCreated?: boolean;
+  prompt?: string;
+  branchName?: string;
+  containerId?: string;
+  startTime: Date;
+  endTime?: Date;
+  success: boolean;
+  error?: string;
+  // These will be populated if we can extract them from git/github operations
+  commitHash?: string;
+  prNumber?: number;
+  prUrl?: string;
+  reviewer?: string;
+  qualityChecks?: {
+    typecheck?: boolean;
+    lint?: boolean;
+    build?: boolean;
+  };
+  summary?: string;
+}
+
 export class WorkflowExecutor {
   private config: Config;
   private options: WorkflowOptions;
@@ -35,6 +59,7 @@ export class WorkflowExecutor {
   private tempScriptDir?: string;
   private currentContainerId?: string;
   private cleanupFunction?: () => Promise<void>;
+  private workflowResults!: WorkflowResults;
 
   constructor(config: Config, options: WorkflowOptions) {
     this.config = config;
@@ -46,16 +71,48 @@ export class WorkflowExecutor {
   }
 
   async execute(execution: ExecutionOptions): Promise<void> {
+    // Initialize workflow state tracking
+    this.workflowResults = {
+      issueNumber: execution.issueNumber,
+      prompt: execution.prompt,
+      startTime: new Date(),
+      success: false,
+      reviewer: this.options.reviewer,
+    };
+
     console.log(''); // Add space before workflow
     logger.info('🚀 Starting autonomous development workflow...');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Phase 1: GitHub Issue Management
     let issueNumber = execution.issueNumber;
+    
+    // If we have an existing issue, try to get its title
+    if (issueNumber && !execution.createIssue) {
+      try {
+        const issue = await this.github.getIssue(this.config.project.owner, this.config.project.name, issueNumber);
+        this.workflowResults.issueTitle = issue.title;
+      } catch (error: any) {
+        logger.debug(`Failed to fetch issue #${issueNumber} title: ${error?.message}`);
+      }
+    }
+    
     if (execution.createIssue && execution.prompt) {
       const spinner = ora('Creating GitHub issue...').start();
       issueNumber = await this.createGitHubIssue(execution.prompt);
       spinner.succeed(`Created GitHub issue #${issueNumber}`);
+      
+      // Update workflow results - also get the issue title
+      this.workflowResults.issueNumber = issueNumber;
+      this.workflowResults.issueCreated = true;
+      
+      // Extract the issue title using same logic as createGitHubIssue
+      if (execution.prompt!.includes('.')) {
+        this.workflowResults.issueTitle = execution.prompt!.split('.')[0].trim();
+      } else {
+        const cleanPrompt = execution.prompt!.replace(/^(we need to |please |can you )/i, '');
+        this.workflowResults.issueTitle = cleanPrompt.length > 50 ? cleanPrompt.substring(0, 50) : cleanPrompt;
+      }
     }
 
     if (issueNumber && this.config.github?.projectId) {
@@ -69,6 +126,9 @@ export class WorkflowExecutor {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     const containerId = await this.prepareContainer();
     this.currentContainerId = containerId;
+    
+    // Track container ID
+    this.workflowResults.containerId = containerId;
     
     // Register cleanup function for graceful shutdown
     this.cleanupFunction = async () => {
@@ -87,9 +147,24 @@ export class WorkflowExecutor {
         prompt: execution.prompt,
       });
 
-      console.log('\n🎉 Workflow completed successfully!');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // Mark workflow as successful and set end time
+      this.workflowResults.success = true;
+      this.workflowResults.endTime = new Date();
 
+      // Display comprehensive summary instead of simple success message
+      this.displayWorkflowSummary();
+
+    } catch (error: any) {
+      // Track error details
+      this.workflowResults.success = false;
+      this.workflowResults.endTime = new Date();
+      this.workflowResults.error = error?.message || 'Unknown error occurred';
+      
+      // Still display summary with error info
+      this.displayWorkflowSummary();
+      
+      // Re-throw to maintain existing error handling
+      throw error;
     } finally {
       // Unregister cleanup function since we're handling it manually
       if (this.cleanupFunction) {
@@ -414,8 +489,9 @@ USER worker
 CMD ["sleep", "infinity"]
     `;
 
-    // Create temporary directory for Docker build context
-    const tempDir = await fs.mkdtemp(join(process.cwd(), '.tmp-constech-'));
+    // Create temporary directory for Docker build context in system temp
+    const osModule = await import('os');
+    const tempDir = await fs.mkdtemp(join(osModule.tmpdir(), 'constech-docker-'));
     const dockerfilePath = join(tempDir, 'Dockerfile');
     
     await fs.writeFile(dockerfilePath, dockerfileContent);
@@ -700,12 +776,12 @@ echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude c
         
         try {
           const result = await exec.inspect();
+          
+          // Parse the output to extract workflow results
+          this.parseWorkflowResults(output);
+          
           if (result.ExitCode === 0) {
             spinner.succeed('Workflow completed successfully!');
-            
-            // Display clean summary from container output
-            this.displayContainerSummary(output);
-            
             resolve();
           } else {
             spinner.fail(`Workflow failed with exit code: ${result.ExitCode}`);
@@ -726,91 +802,164 @@ echo "\$(cat /tmp/claude-prompt.txt)" | CLAUDE_CONFIG_DIR=/home/worker/.claude c
     });
   }
 
-  private displayContainerSummary(rawOutput: string): void {
+  private parseWorkflowResults(containerOutput: string): void {
     try {
-      // Clean and process the container output
-      const cleanOutput = rawOutput
-        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // Remove control characters
-        .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI escape sequences
-        .replace(/[\uFFF0-\uFFFF]/g, '') // Remove Unicode specials
-        .trim();
+      // Extract branch name
+      const branchMatch = containerOutput.match(/(?:Created|Checked out|Switching to) (?:branch )?['"`]?([a-zA-Z0-9\-_/]+)['"`]?/i);
+      if (branchMatch) {
+        this.workflowResults.branchName = branchMatch[1];
+      }
 
-      // Extract meaningful lines from the output
-      const outputLines = cleanOutput
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => {
-          return line && 
-                 !line.startsWith('Step ') &&
-                 !line.includes('Debug:') &&
-                 !line.includes('Claude authentication verified') &&
-                 !line.includes('Preparing isolated workspace') &&
-                 !line.includes('Workspace prepared') &&
-                 !line.includes('Starting Claude Code execution') &&
-                 !line.includes('Executing Claude Code') &&
-                 !line.includes('Claude Code execution completed') &&
-                 !line.match(/^[#;A\d'"%()\-\s]*$/) && // Skip lines with only weird chars
-                 !line.match(/^\d{2}:\d{2}:\d{2}/) && // Skip timestamp lines
-                 line.length > 10; // Skip very short lines
-        });
+      // Extract commit hash
+      const commitMatch = containerOutput.match(/(?:commit|Commit) ([a-f0-9]{7,40})/i);
+      if (commitMatch) {
+        this.workflowResults.commitHash = commitMatch[1];
+      }
 
-      // Look for key completion indicators and meaningful content
-      const meaningfulLines = outputLines.filter(line => {
-        return line.includes('✅') || 
-               line.includes('Created') ||
-               line.includes('Updated') ||
-               line.includes('Fixed') ||
-               line.includes('Added') ||
-               line.includes('Implemented') ||
-               line.includes('Modified') ||
-               line.includes('Pull request') ||
-               line.includes('Branch') ||
-               line.includes('Commit') ||
-               line.includes('Issue') ||
-               line.includes('Success') ||
-               line.includes('Complete') ||
-               (line.length > 20 && !line.includes('$') && !line.includes('echo'));
-      });
+      // Extract PR number and URL
+      const prMatch = containerOutput.match(/pull request.*?#(\d+)/i) || 
+                     containerOutput.match(/PR.*?#(\d+)/i);
+      if (prMatch) {
+        this.workflowResults.prNumber = parseInt(prMatch[1]);
+      }
 
-      if (meaningfulLines.length > 0) {
-        console.log('\n' + '━'.repeat(60));
-        console.log('🤖 Claude Code Execution Summary');
-        console.log('━'.repeat(60));
-        
-        // Display up to 10 most meaningful lines
-        const displayLines = meaningfulLines.slice(-10);
-        displayLines.forEach(line => {
-          // Add nice formatting with colors
-          if (line.includes('✅') || line.includes('Success') || line.includes('Complete')) {
-            console.log(`   ${chalk.green('✅')} ${line.replace(/✅\s*/, '')}`);
-          } else if (line.includes('Created') || line.includes('Added')) {
-            console.log(`   ${chalk.blue('➕')} ${line}`);
-          } else if (line.includes('Updated') || line.includes('Modified')) {
-            console.log(`   ${chalk.yellow('📝')} ${line}`);
-          } else if (line.includes('Pull request') || line.includes('PR')) {
-            console.log(`   ${chalk.magenta('🔄')} ${line}`);
-          } else if (line.includes('Branch')) {
-            console.log(`   ${chalk.cyan('🌿')} ${line}`);
-          } else {
-            console.log(`   ${chalk.gray('•')} ${line}`);
-          }
-        });
-        
-        console.log('━'.repeat(60) + '\n');
-      } else {
-        // Fallback - just show that execution completed
-        console.log('\n' + '━'.repeat(60));
-        console.log('🤖 Claude Code Execution Summary');
-        console.log('━'.repeat(60));
-        console.log(`   ${chalk.green('✅')} Autonomous development workflow completed successfully`);
-        console.log('━'.repeat(60) + '\n');
+      const prUrlMatch = containerOutput.match(/(https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/\d+)/);
+      if (prUrlMatch) {
+        this.workflowResults.prUrl = prUrlMatch[1];
+      }
+
+      // Extract quality check results
+      const qualityChecks: any = {};
+      
+      // Check for typecheck results
+      if (containerOutput.includes('pnpm typecheck') || containerOutput.includes('npm run typecheck')) {
+        qualityChecks.typecheck = !containerOutput.includes('typecheck failed') && 
+                                  !containerOutput.includes('Type checking failed');
       }
       
-    } catch (error) {
-      // Don't fail the whole workflow if summary display fails
-      logger.debug('Failed to display container summary:', error);
+      // Check for lint results  
+      if (containerOutput.includes('pnpm check') || containerOutput.includes('pnpm lint')) {
+        qualityChecks.lint = !containerOutput.includes('lint failed') && 
+                            !containerOutput.includes('Linting failed');
+      }
+      
+      // Check for build results
+      if (containerOutput.includes('pnpm build') || containerOutput.includes('npm run build')) {
+        qualityChecks.build = !containerOutput.includes('build failed') && 
+                             !containerOutput.includes('Build failed');
+      }
+
+      if (Object.keys(qualityChecks).length > 0) {
+        this.workflowResults.qualityChecks = qualityChecks;
+      }
+
+      // Simplify summary extraction - look for common patterns from Claude output
+      // Since we're not seeing summaries, let's just skip this for now to avoid delays
+      // and focus on the basic info that works (branch, commit, PR)
+      
+      // Uncomment below if you want to try summary extraction:
+      /*
+      const summaryPatterns = [
+        /summary:\s*(.*)/i,
+        /completed:\s*(.*)/i, 
+        /implemented:\s*(.*)/i,
+        /added:\s*(.*)/i,
+        /fixed:\s*(.*)/i
+      ];
+      
+      for (const pattern of summaryPatterns) {
+        const match = containerOutput.match(pattern);
+        if (match && match[1].trim().length > 10) {
+          this.workflowResults.summary = match[1].trim().substring(0, 200);
+          break;
+        }
+      }
+      */
+
+      logger.debug('Parsed workflow results:', JSON.stringify(this.workflowResults, null, 2));
+    } catch (error: any) {
+      logger.debug('Failed to parse workflow results:', error.message);
     }
   }
+
+  private displayWorkflowSummary(): void {
+    const results = this.workflowResults;
+    const duration = results.endTime 
+      ? Math.round((results.endTime.getTime() - results.startTime.getTime()) / 1000)
+      : 0;
+
+    console.log('\n' + '━'.repeat(80));
+    console.log(chalk.cyan.bold('🤖 Autonomous Development Summary'));
+    console.log('━'.repeat(80));
+
+    if (!results.success && results.error) {
+      console.log(chalk.red(`❌ Workflow failed: ${results.error}`));
+      console.log('━'.repeat(80) + '\n');
+      return;
+    }
+
+    // Task Information
+    console.log(chalk.yellow.bold('🎯 Task:'));
+    if (results.issueNumber) {
+      const issueDisplay = results.issueTitle 
+        ? `Issue #${results.issueNumber}: "${results.issueTitle}"${results.issueCreated ? ' (created)' : ''}`
+        : `Issue #${results.issueNumber}${results.issueCreated ? ' (created)' : ''}`;
+      console.log(`   • ${issueDisplay}`);
+    } else if (results.prompt) {
+      const truncatedPrompt = results.prompt.length > 100 
+        ? results.prompt.substring(0, 100) + '...'
+        : results.prompt;
+      console.log(`   • Custom Task: "${truncatedPrompt}"`);
+    }
+
+    // Execution Details
+    console.log(chalk.blue.bold('\n⚡ Execution:'));
+    console.log(`   • Duration: ${duration}s`);
+    console.log(`   • Container: ${results.containerId?.substring(0, 12) || 'unknown'}`);
+    if (results.reviewer) {
+      console.log(`   • Reviewer: ${results.reviewer}`);
+    }
+
+    // Success Indicators
+    console.log(chalk.green.bold('\n✅ Results:'));
+    console.log(`   • Status: ${results.success ? 'Completed Successfully' : 'Failed'}`);
+    
+    if (results.branchName) {
+      console.log(`   • Branch: ${results.branchName}`);
+    }
+    if (results.commitHash) {
+      console.log(`   • Commit: ${results.commitHash.substring(0, 8)}`);
+    }
+    if (results.prNumber && results.prUrl) {
+      console.log(`   • Pull Request: #${results.prNumber}`);
+      console.log(`   • PR URL: ${results.prUrl}`);
+    }
+
+    // Work Summary
+    if (results.summary) {
+      console.log(chalk.blue.bold('\n📝 Work Summary:'));
+      console.log(`   • ${results.summary}`);
+    }
+
+    // Quality Checks
+    if (results.qualityChecks) {
+      console.log(chalk.magenta.bold('\n🔍 Quality Checks:'));
+      const checks = results.qualityChecks;
+      if (checks.typecheck !== undefined) {
+        console.log(`   • TypeScript: ${checks.typecheck ? '✅' : '❌'}`);
+      }
+      if (checks.lint !== undefined) {
+        console.log(`   • Linting: ${checks.lint ? '✅' : '❌'}`);
+      }
+      if (checks.build !== undefined) {
+        console.log(`   • Build: ${checks.build ? '✅' : '❌'}`);
+      }
+    }
+
+    console.log(chalk.gray('\n💡 Autonomous development workflow completed with Claude Code in isolated container'));
+    console.log('━'.repeat(80) + '\n');
+  }
+
 
   private async cleanupContainer(containerId: string): Promise<void> {
     if (!containerId) {

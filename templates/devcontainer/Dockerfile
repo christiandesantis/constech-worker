@@ -96,11 +96,10 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Install MCP servers (GitHub enabled by default, others commented)
-RUN npm install -g @modelcontextprotocol/server-github
-# Optional MCP servers (uncomment to enable):
-# RUN npm install -g @modelcontextprotocol/server-semgrep
+# Install MCP servers
+# RUN npm install -g @modelcontextprotocol/server-github
 # RUN npm install -g @modelcontextprotocol/server-ref
+# RUN npm install -g @modelcontextprotocol/server-semgrep
 
 # Configure git with plaiwoo-bot for consistency  
 USER root
