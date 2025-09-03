@@ -1,6 +1,6 @@
 {
 	"name": "constech-worker",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "Autonomous GitHub project management with Claude Code integration in isolated Docker containers",
 	"main": "dist/cli.js",
 	"bin": {
@@ -22,7 +22,8 @@
 		"format": "biome format --write",
 		"lint": "biome lint --write",
 		"check": "biome check --write",
-		"prepublishOnly": "pnpm build"
+		"release": "semantic-release",
+		"prepublishOnly": "npm run build"
 	},
 	"keywords": [
 		"github",
@@ -57,6 +58,10 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.2.2",
+		"@semantic-release/changelog": "^6.0.3",
+		"@semantic-release/git": "^10.0.1",
+		"@semantic-release/github": "^11.0.5",
+		"@semantic-release/npm": "^12.0.2",
 		"@types/chalk-animation": "^1.6.3",
 		"@types/dockerode": "^3.3.31",
 		"@types/node": "^22.9.1",
@@ -64,6 +69,7 @@
 		"@typescript-eslint/parser": "^8.15.0",
 		"eslint": "^9.15.0",
 		"prettier": "^3.3.3",
+		"semantic-release": "^24.2.7",
 		"tsup": "^8.3.5",
 		"typescript": "^5.6.3",
 		"vitest": "^2.1.6"
