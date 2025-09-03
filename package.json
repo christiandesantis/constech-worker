@@ -1,6 +1,6 @@
 {
 	"name": "constech-worker",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"description": "Autonomous GitHub project management with Claude Code integration in isolated Docker containers",
 	"main": "dist/cli.js",
 	"bin": {
