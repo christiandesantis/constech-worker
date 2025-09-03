@@ -40,8 +40,6 @@ Examples:
   ${chalk.cyan('constech-worker dispatch --prompt "Add dark mode" --create-issue')}
   ${chalk.cyan("constech-worker doctor")}                 Check system requirements
   ${chalk.cyan("constech-worker containers --clean")}     Clean up orphaned containers
-  
-For more help: ${chalk.blue("https://github.com/constech-org/constech-worker")}
 `,
 	);
 
